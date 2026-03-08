@@ -717,6 +717,25 @@ body {
       </div>
     </div>
 
+    <div id="confirm-area" style="display:none">
+      <div style="font-size:13px; color:var(--power); margin-bottom:16px;">✓ Datos extraídos correctamente</div>
+      <div id="confirm-summary"></div>
+      
+      <div id="confirm-session-fields" style="display:none">
+        <label style="display:block; font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-dim); margin:16px 0 8px;">Centro</label>
+        <div class="upload-type-btns" id="center-btns" style="margin-bottom:0">
+          <button class="type-btn" data-center="Pozuelo" onclick="selectCenter('Pozuelo')">Pozuelo</button>
+          <button class="type-btn" data-center="Gran Vía" onclick="selectCenter('Gran Vía')">Gran Vía</button>
+          <button class="type-btn" data-center="Condesa de Venadito" onclick="selectCenter('Condesa de Venadito')" style="font-size:10px">C. Venadito</button>
+        </div>
+        
+        <label style="display:block; font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-dim); margin:16px 0 8px;">Número de saco</label>
+        <input type="number" id="bag-number" placeholder="Ej: 12" min="1" max="99" style="width:100%; padding:12px; border-radius:8px; border:1px solid var(--border); background:var(--bg); color:var(--text); font-family:'DM Sans',sans-serif; font-size:16px; -webkit-appearance:none;">
+      </div>
+      
+      <button class="btn btn-primary" style="margin-top:16px" onclick="confirmSave()">Guardar</button>
+    </div>
+
     <button class="btn btn-primary" id="btn-analyze" onclick="analyzeImages()" disabled>Analizar con Claude</button>
     <button class="btn btn-secondary" onclick="closeAddModal()" style="margin-top:8px">Cancelar</button>
   </div>
@@ -738,6 +757,8 @@ let state = {
 let uploadType = 'session';
 let selectedFiles = [];
 let charts = {};
+let pendingData = null;
+let selectedCenter = '';
 
 // ==================== INIT ====================
 function init() {
@@ -821,7 +842,7 @@ function renderSessions() {
   list.innerHTML = sorted.map(s => `
     <div class="session-card" onclick="showSessionDetail('${s.id}')">
       <div class="session-date">${formatDate(s.date)}</div>
-      <div class="session-location">${s.location || ''}</div>
+      <div class="session-location">${s.location || ''}${s.bag ? ' · Saco ' + s.bag : ''}</div>
       <div class="session-metrics">
         <div class="metric energy">
           <div class="metric-value">${s.energy.toFixed(1)}</div>
@@ -848,7 +869,7 @@ function showSessionDetail(id) {
   content.innerHTML = `
     <div class="detail-header">
       <div class="date">${formatDate(session.date)}</div>
-      <div class="location">${session.location || ''}</div>
+      <div class="location">${session.location || ''}${session.bag ? ' · Saco ' + session.bag : ''}</div>
     </div>
     
     <div class="rings">
@@ -1040,12 +1061,18 @@ function openAddModal() {
     return;
   }
   selectedFiles = [];
+  pendingData = null;
+  selectedCenter = '';
   document.getElementById('file-input').value = '';
   document.getElementById('preview-imgs').innerHTML = '';
   document.getElementById('upload-label').textContent = 'Toca para seleccionar imágenes';
   document.getElementById('processing-area').style.display = 'none';
+  document.getElementById('confirm-area').style.display = 'none';
   document.getElementById('btn-analyze').disabled = true;
   document.getElementById('btn-analyze').style.display = '';
+  document.querySelectorAll('#center-btns .type-btn').forEach(b => b.classList.remove('active'));
+  const bagInput = document.getElementById('bag-number');
+  if (bagInput) bagInput.value = '';
   document.getElementById('add-modal').classList.add('active');
 }
 
@@ -1182,7 +1209,8 @@ Notes:
     const parsed = JSON.parse(cleaned);
     
     if (uploadType === 'session') {
-      const session = {
+      pendingData = {
+        type: 'session',
         id: 'sess_' + Date.now(),
         date: parsed.date,
         location: parsed.location || '',
@@ -1195,24 +1223,50 @@ Notes:
           energy: parseFloat(r.energy)
         }))
       };
-      state.sessions.push(session);
-      saveState();
-      renderSessions();
-      showToast('Sesión guardada ✓', 'success');
+      
+      // Pre-select center if detected from image
+      const loc = (parsed.location || '').toLowerCase();
+      if (loc.includes('pozuelo')) selectCenter('Pozuelo');
+      else if (loc.includes('gran') && loc.includes('via') || loc.includes('vía')) selectCenter('Gran Vía');
+      else if (loc.includes('condesa') || loc.includes('venadito')) selectCenter('Condesa de Venadito');
+      
+      document.getElementById('confirm-summary').innerHTML = `
+        <div style="display:flex; gap:12px; margin-bottom:4px;">
+          <div class="metric energy" style="flex:1;text-align:center;padding:10px 0;border-radius:8px;background:rgba(255,255,255,0.03)">
+            <div class="metric-value" style="font-family:'Bebas Neue',sans-serif;font-size:22px;color:var(--energy)">${pendingData.energy.toFixed(1)}</div>
+            <div class="metric-label" style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--energy);opacity:0.7">Energy</div>
+          </div>
+          <div class="metric power" style="flex:1;text-align:center;padding:10px 0;border-radius:8px;background:rgba(255,255,255,0.03)">
+            <div class="metric-value" style="font-family:'Bebas Neue',sans-serif;font-size:22px;color:var(--power)">${Math.round(pendingData.power)}</div>
+            <div class="metric-label" style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--power);opacity:0.7">Power</div>
+          </div>
+          <div class="metric synchro" style="flex:1;text-align:center;padding:10px 0;border-radius:8px;background:rgba(255,255,255,0.03)">
+            <div class="metric-value" style="font-family:'Bebas Neue',sans-serif;font-size:22px;color:var(--synchro)">${pendingData.synchro.toFixed(1)}</div>
+            <div class="metric-label" style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--synchro);opacity:0.7">Synchro</div>
+          </div>
+        </div>
+        <div style="font-size:12px; color:var(--text-dim); margin-top:8px;">📅 ${formatDate(pendingData.date)} · ${pendingData.rounds.length} rounds</div>
+      `;
+      document.getElementById('confirm-session-fields').style.display = 'block';
+      
     } else {
-      const choreo = {
+      pendingData = {
+        type: 'choreo',
         id: 'choreo_' + Date.now(),
         startDate: new Date().toISOString().split('T')[0],
         technicalMove: parsed.technicalMove || 'Technical Move',
         rounds: parsed.rounds || []
       };
-      state.choreographies.push(choreo);
-      saveState();
-      renderChoreographies();
-      showToast('Coreografía guardada ✓', 'success');
+      
+      document.getElementById('confirm-summary').innerHTML = `
+        <div style="font-size:14px; font-weight:600; color:var(--accent); margin-bottom:8px;">${pendingData.technicalMove}</div>
+        ${pendingData.rounds.map((r,i) => `<div style="font-size:12px; color:var(--text-dim); padding:4px 0;">R${i+1}: ${r}</div>`).join('')}
+      `;
+      document.getElementById('confirm-session-fields').style.display = 'none';
     }
     
-    closeAddModal();
+    processing.style.display = 'none';
+    document.getElementById('confirm-area').style.display = 'block';
     
   } catch (err) {
     console.error('Analysis error:', err);
@@ -1220,6 +1274,54 @@ Notes:
     btn.style.display = '';
     processing.style.display = 'none';
   }
+}
+
+// ==================== CENTER & CONFIRM ====================
+function selectCenter(center) {
+  selectedCenter = center;
+  document.querySelectorAll('#center-btns .type-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.center === center);
+  });
+}
+
+function confirmSave() {
+  if (!pendingData) return;
+  
+  if (pendingData.type === 'session') {
+    if (!selectedCenter) {
+      showToast('Selecciona un centro', 'error');
+      return;
+    }
+    const bagNum = document.getElementById('bag-number').value;
+    
+    const session = {
+      id: pendingData.id,
+      date: pendingData.date,
+      location: selectedCenter,
+      bag: bagNum ? parseInt(bagNum) : null,
+      energy: pendingData.energy,
+      power: pendingData.power,
+      synchro: pendingData.synchro,
+      rounds: pendingData.rounds
+    };
+    state.sessions.push(session);
+    saveState();
+    renderSessions();
+    showToast('Sesión guardada ✓', 'success');
+  } else {
+    state.choreographies.push({
+      id: pendingData.id,
+      startDate: pendingData.startDate,
+      technicalMove: pendingData.technicalMove,
+      rounds: pendingData.rounds
+    });
+    saveState();
+    renderChoreographies();
+    showToast('Coreografía guardada ✓', 'success');
+  }
+  
+  pendingData = null;
+  closeAddModal();
 }
 
 // ==================== EXPORT / IMPORT ====================
