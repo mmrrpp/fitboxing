@@ -646,7 +646,9 @@ body {
   <div class="section-title">Ajustes</div>
   <div class="setting-group">
     <label>API Key de Anthropic</label>
-    <input type="password" id="api-key-input" placeholder="sk-ant-..." oninput="saveApiKey()">
+    <input type="password" id="api-key-input" placeholder="sk-ant-...">
+    <button class="btn btn-primary" style="margin-top:10px" onclick="saveApiKey()">Guardar API Key</button>
+    <p id="api-key-status" style="font-size:12px; margin-top:8px; color:var(--power); display:none;">✓ API Key guardada</p>
   </div>
   <div class="setting-group">
     <label>Exportar datos</label>
@@ -748,6 +750,9 @@ function init() {
     // Show hint
   }
   document.getElementById('api-key-input').value = state.apiKey || '';
+  if (state.apiKey) {
+    document.getElementById('api-key-status').style.display = 'block';
+  }
 }
 
 function loadState() {
@@ -772,6 +777,10 @@ function saveState() {
 function saveApiKey() {
   state.apiKey = document.getElementById('api-key-input').value.trim();
   localStorage.setItem('fitboxing_apikey', state.apiKey);
+  const status = document.getElementById('api-key-status');
+  status.style.display = 'block';
+  showToast('API Key guardada ✓', 'success');
+  setTimeout(() => { status.style.display = 'none'; }, 3000);
 }
 
 // ==================== NAVIGATION ====================
